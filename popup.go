@@ -6,10 +6,10 @@ import (
 	"math"
 	"time"
 
-	"complacentsee.com/goDataLogConvertTUI/helpers"
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/complacentsee/goDataLogConvertTUI/helpers"
 )
 
 type ScanningFilesPopupModel struct {

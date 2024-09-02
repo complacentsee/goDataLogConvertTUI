@@ -1,4 +1,4 @@
-module complacentsee.com/goDataLogConvertTUI
+module github.com/complacentsee/goDataLogConvertTUI
 
 go 1.23
 
