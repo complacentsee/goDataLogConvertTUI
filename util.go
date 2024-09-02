@@ -365,7 +365,7 @@ func (m *model) UpdateViewDimentions() {
 			newHeight--
 		}
 		if m.processingStatus != nil {
-			newHeight = newHeight - 3
+			newHeight = newHeight - 2
 		}
 		m.filesTable.SetHeight(newHeight)
 	}
