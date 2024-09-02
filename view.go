@@ -34,9 +34,41 @@ func (m model) ViewMainModel() string {
 	// Render the table
 	s += m.filesTable.View()
 	s += "\n"
+	if m.processed && m.processingStatus != nil {
+		s += m.ViewProcessingProgressBar()
+	}
 	if m.footerStatus != "" {
 		s += fmt.Sprintf("Status: %s\n", m.footerStatus)
 	}
-	s += "[q] Quit  [j] Down  [k] Up  [Space/Enter] Toggle Select [a] Select All  [n] Deselect All  [p] Process All\n"
+	s += "[q] Quit  [j] Down  [k] Up  [Space/Enter] Toggle Select [a] Select All  [n] Deselect All  [p] Process All"
 	return s
+}
+
+func (m model) ViewProcessingProgressBar() string {
+	if m.processingStatus != nil {
+
+		datProgressView := m.processingStatus.datFilesProcessedPB.ViewAs(m.processingStatus.datFilesProcessedPBPercent)
+		datFilesProcessed := lipgloss.JoinVertical(
+			lipgloss.Left,
+			fmt.Sprintf("%d dat file records loaded out of %d.", m.processingStatus.datFilesProcessed, m.processingStatus.processingCount),
+			datProgressView,
+		)
+
+		historianInsertProgressView := m.processingStatus.historianInsertedProcessedPB.ViewAs(m.processingStatus.historianInsertedProcessedPBPercent)
+		historianInsertsProcessed := lipgloss.JoinVertical(
+			lipgloss.Left,
+			fmt.Sprintf("%d dat files inserted into historian out of %d.", m.processingStatus.historianInserted, m.processingStatus.processingCount),
+			historianInsertProgressView,
+		)
+
+		progressBars := lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			datFilesProcessed,
+			historianInsertsProcessed,
+		)
+		progressBars += "\n"
+		return progressBars
+	}
+
+	return ""
 }

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/complacentsee/goDatalogConvert/LibDAT"
@@ -19,6 +20,7 @@ func (nw *nullWriter) Write(p []byte) (n int, err error) {
 }
 
 func updateWithDATFileNameMsg(m model, msg DATFileNameMsg) (model, tea.Cmd) {
+	m.UpdateViewDimentions()
 	// validate column width
 	requiredWidth := len(msg.fileName) + 1
 	columns := m.filesTable.Columns()
@@ -193,6 +195,12 @@ func updateWithDATFloatFileHeaderMsg(m model, msg DATFloatFileHeaderMsg) (model,
 }
 
 func updateWithDATFloatFileRecordsMsg(m model, msg DATTagFloatRecordMsg) model {
+	// update progress bar
+	m.processingStatus.datFilesProcessed++
+	if m.processingStatus.processingCount > 0 {
+		m.processingStatus.datFilesProcessedPBPercent = float64(m.processingStatus.datFilesProcessed) / float64(m.processingStatus.processingCount)
+	}
+
 	index, row, err := findRowByFileName(m, msg.fileName)
 	if err != nil {
 		return m
@@ -233,6 +241,17 @@ func processNextDatFile(m *model, first bool) (tea.Model, tea.Cmd) {
 	if !m.connected {
 		return m, SendStatus("Must be connected to server to process.")
 	}
+
+	if first {
+		processCountTotal := 0
+		for i := 0; i < len(m.rows); i++ {
+			if m.rows[i][0] == "[X]" && m.rows[i][2] == "Tags Valid" {
+				processCountTotal++
+			}
+		}
+		m.InitializeProgressBars(processCountTotal)
+	}
+
 	for i := 0; i < len(m.rows); i++ {
 		if m.rows[i][0] == "[X]" && m.rows[i][2] == "Tags Valid" {
 			if m.recsLoadedCount < 3 {
@@ -272,8 +291,16 @@ func processNextHistorianInsert(m *model) tea.Cmd {
 }
 
 func updateWithHistorianInsertMsg(m model, msg HistorianInsertMsg) model {
+	// update progress bar
+	m.processingStatus.historianInserted++
+	if m.processingStatus.processingCount > 0 {
+		m.processingStatus.historianInsertedProcessedPBPercent = float64(m.processingStatus.historianInserted) / float64(m.processingStatus.processingCount)
+	}
+
 	index, row, err := findRowByFileName(m, msg.fileName)
 	if err != nil {
+		updatedRow := table.Row{row[0], row[1], "Error Inserting", row[3], row[4], row[5], row[6], row[7], fmt.Sprintf("%.2f sec", msg.duration.Seconds())}
+		m, _ = updateRow(m, index, updatedRow)
 		return m
 	}
 
@@ -281,11 +308,7 @@ func updateWithHistorianInsertMsg(m model, msg HistorianInsertMsg) model {
 	m.recsLoadedCount--
 
 	updatedRow := table.Row{row[0], row[1], "Completed", row[3], row[4], row[5], row[6], row[7], fmt.Sprintf("%.2f sec", msg.duration.Seconds())}
-	m, err = updateRow(m, index, updatedRow)
-	if err != nil {
-		fmt.Println("Error updating row:", err)
-		return m
-	}
+	m, _ = updateRow(m, index, updatedRow)
 
 	return m
 }
@@ -329,18 +352,57 @@ func ResetProcessingFlag() tea.Cmd {
 	}
 }
 
-func (m *model) UpdateTableHeight() {
+func (m *model) UpdateViewDimentions() {
 	newHeight := m.Height
 	if newHeight < 1 {
 		m.filesTable.SetHeight(1)
 	} else {
-		newHeight = newHeight - 3 //Remove top header for server status & bottom key menu
+		newHeight = newHeight - 2 //Remove top header for server status & bottom key menu
 		if m.useTagMap {
 			newHeight--
 		}
-		if m.footerStatus == "" {
+		if m.footerStatus != "" {
 			newHeight--
+		}
+		if m.processingStatus != nil {
+			newHeight = newHeight - 3
 		}
 		m.filesTable.SetHeight(newHeight)
 	}
+
+	if m.processingStatus != nil {
+		m.processingStatus.datFilesProcessedPB.Width = m.Width/2 - 2
+		m.processingStatus.historianInsertedProcessedPB.Width = m.Width/2 - 2
+	}
+
+}
+
+type processingStatus struct {
+	processingCount                     int
+	datFilesProcessed                   int
+	historianInserted                   int
+	datFilesProcessedPB                 progress.Model
+	datFilesProcessedPBPercent          float64
+	historianInsertedProcessedPB        progress.Model
+	historianInsertedProcessedPBPercent float64
+}
+
+func (m *model) InitializeProgressBars(totalProcessCount int) {
+	datFilesProcessedPB := progress.New(progress.WithDefaultGradient())
+	datFilesProcessedPB.Width = m.Width/2 - 2
+
+	dattagspb := progress.New(progress.WithDefaultGradient())
+	dattagspb.Width = m.Width/2 - 2
+
+	m.processingStatus = &processingStatus{
+		processingCount:                     totalProcessCount,
+		datFilesProcessed:                   0,
+		historianInserted:                   0,
+		datFilesProcessedPB:                 datFilesProcessedPB,
+		datFilesProcessedPBPercent:          0.0,
+		historianInsertedProcessedPB:        dattagspb,
+		historianInsertedProcessedPBPercent: 0.0,
+	}
+
+	m.UpdateViewDimentions()
 }

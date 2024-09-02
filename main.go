@@ -32,6 +32,7 @@ type model struct {
 	firstDatReturned bool
 	recsLoadedCount  int
 	sfmpu            ScanningFilesPopupModel
+	processingStatus *processingStatus
 }
 
 func initialModel(dirPath, host, processName, tagMapCSV string, debugLevel bool) model {
@@ -143,7 +144,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
-		m.UpdateTableHeight()
+		m.UpdateViewDimentions()
 
 	case tea.MouseMsg:
 		// Handle mouse scroll
