@@ -8,26 +8,30 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/complacentsee/goDatalogConvert/LibDAT"
 )
 
 type model struct {
-	filesTable     table.Model
-	selected       int
-	rows           []table.Row
-	connected      bool
-	connecting     bool
-	dirPath        string
-	hostname       string
-	processName    string
-	tagMapCSV      string
-	debugLevel     bool
-	dr             *LibDAT.DatReader
-	footerStatus   string
-	datFileRecords map[string]DATRecordStructure
-	tagMaps        map[string]string
-	useTagMap      bool
+	Width, Height    int
+	filesTable       table.Model
+	selected         int
+	rows             []table.Row
+	connected        bool
+	connecting       bool
+	dirPath          string
+	hostname         string
+	processName      string
+	tagMapCSV        string
+	debugLevel       bool
+	dr               *LibDAT.DatReader
+	footerStatus     string
+	datFileRecords   map[string]DATRecordStructure
+	tagMaps          map[string]string
+	useTagMap        bool
+	processed        bool
+	firstDatReturned bool
+	recsLoadedCount  int
+	sfmpu            ScanningFilesPopupModel
 }
 
 func initialModel(dirPath, host, processName, tagMapCSV string, debugLevel bool) model {
@@ -48,7 +52,6 @@ func initialModel(dirPath, host, processName, tagMapCSV string, debugLevel bool)
 		{Title: "Hist Tags", Width: 9},
 		{Title: "Records", Width: 7},
 		{Title: "Duration", Width: 8},
-		{Title: "Recs Written", Width: 12},
 		{Title: "Duration", Width: 8},
 	}
 
@@ -58,7 +61,7 @@ func initialModel(dirPath, host, processName, tagMapCSV string, debugLevel bool)
 		table.WithColumns(columns),
 		table.WithRows(rows),
 		table.WithFocused(true), // Highlight focused row
-		table.WithHeight(15),    // Set height to fit the table
+		table.WithHeight(10),    // Set height to fit the table
 	)
 
 	return model{
@@ -76,6 +79,8 @@ func initialModel(dirPath, host, processName, tagMapCSV string, debugLevel bool)
 		datFileRecords: make(map[string]DATRecordStructure),
 		tagMaps:        make(map[string]string),
 		useTagMap:      false,
+		processed:      false,
+		sfmpu:          initialScanningPopupModel(),
 	}
 }
 
@@ -90,6 +95,7 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	slog.Debug("Update model called", "Type", fmt.Sprintf("%T", msg), "Tea.Msg", msg)
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -99,7 +105,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filesTable.MoveDown(1)
 		case "k", "up":
 			m.filesTable.MoveUp(1)
+		case "pgdown", "f", "ctrl+d": // Page Down
+			m.filesTable.MoveDown(m.filesTable.Height()) // Move down by the height of the table
+		case "pgup", "b", "ctrl+u": // Page Up
+			m.filesTable.MoveUp(m.filesTable.Height()) // Move up by the height of the table
+
 		case " ", "enter":
+			if m.processed {
+				return m, nil
+			}
 			selectedRow := m.filesTable.Cursor()
 			if selectedRow >= 0 && selectedRow < len(m.rows) {
 				if m.rows[selectedRow][0] == "[ ]" {
@@ -120,13 +134,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.filesTable.SetRows(m.rows)
 		case "p": // Process selected file
-			if len(m.rows) > 0 {
-				name := m.rows[0][1]
-				return m, tea.Batch(LoadDATFloatRecords(&m, name, m.datFileRecords[name].recordCount),
-					UpdateStateToLoading(name))
+			if !m.processed {
+				m.processed = true
+				return processNextDatFile(&m, true)
 			}
 		}
-	case string:
+
+	case tea.WindowSizeMsg:
+		m.Width = msg.Width
+		m.Height = msg.Height
+		m.UpdateTableHeight()
+
+	case tea.MouseMsg:
+		// Handle mouse scroll
+		if msg.Type == tea.MouseWheelUp {
+			m.filesTable.MoveUp(1)
+		} else if msg.Type == tea.MouseWheelDown {
+			m.filesTable.MoveDown(1)
+		}
+
 	case PiServerProcessNameMsg:
 		m.processName = msg.processName
 	case PiServerConnectMsg:
@@ -145,53 +171,56 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == "" {
 			m.tagMaps = msg.mapping
 			m.useTagMap = true
+		} else {
+			m.footerStatus = msg.err
 		}
 	case LookupTagsOnHistorianMsg:
 		updateDATFileRecord(&m, msg)
 		return m, LoadDATFloatFile(m, msg.fileName)
 	case DATFloatFileHeaderMsg:
-		m = updateWithDATFloatFileHeaderMsg(m, msg)
+		return updateWithDATFloatFileHeaderMsg(m, msg)
 	case DATTagFloatRecordMsg:
 		m = updateWithDATFloatFileRecordsMsg(m, msg)
+		if !m.firstDatReturned {
+			m.firstDatReturned = true
+			histCMD := processNextHistorianInsert(&m)
+			m, cmd := processNextDatFile(&m, false)
+			return m, tea.Batch(cmd, histCMD)
+		}
+		m.firstDatReturned = true
+		return processNextDatFile(&m, false)
 	case UpdateStateToLoadingMsg:
 		m = updateWithUpdateStateToLoadingMsg(m, msg)
+	case HistorianInsertMsg:
+		m = updateWithHistorianInsertMsg(m, msg)
+		return m, processNextHistorianInsert(&m)
+	case RetriggerDATLoadingMsg:
+		return processNextDatFile(&m, false)
+	case RetriggerHistorianInsertMsg:
+		return m, processNextHistorianInsert(&m)
+	case StatusMsg:
+		m.footerStatus = msg.message
+	case ResetProcessingFlagMsg:
+		m.processed = false
+
+	case FileInititalCountMsg:
+		m.sfmpu.TotalFiles = msg.FileCount
+		m.sfmpu.Active = true
+	case FileScanCompletedMsg:
+		m.sfmpu.Active = false
 	}
 
 	return m, nil
 }
 
 func (m model) View() string {
-	var statusColor lipgloss.Color
-	statusMessage := ""
+	s := ""
+	s += m.ViewMainModel()
 
-	if m.connecting {
-		statusColor = lipgloss.Color("3")
-		statusMessage = fmt.Sprintf("Connecting to Server: %s, with process name: %s", m.hostname, m.processName)
-	} else {
-		if m.connected {
-			statusColor = lipgloss.Color("82")
-			statusMessage = fmt.Sprintf("Connected to Server: %s, with process name: %s", m.hostname, m.processName)
-		} else {
-			statusColor = lipgloss.Color("1")
-			statusMessage = fmt.Sprintf("Unable to connect to server: %s, with process name: %s", m.hostname, m.processName)
-		}
+	if m.sfmpu.Active {
+		s = m.sfmpu.View(m.Width, m.Height, s)
 	}
 
-	statusStyle := lipgloss.NewStyle().Foreground(statusColor).Render
-
-	// Status bar
-	s := fmt.Sprintf("Server status: %s\n", statusStyle(statusMessage))
-	if m.useTagMap {
-		s += fmt.Sprintf("Using tag map file: %s\n", m.tagMapCSV)
-	}
-
-	// Render the table
-	s += m.filesTable.View()
-	s += "\n"
-	if m.footerStatus != "" {
-		s += fmt.Sprintf("Status: %s\n", m.footerStatus)
-	}
-	s += "[q] Quit  [j] Down  [k] Up  [Space/Enter] Toggle Select [a] Select All  [n] Deselect All  [p] Process All\n"
 	return s
 }
 
@@ -203,16 +232,29 @@ func main() {
 	tagMapCSV := flag.String("tagMapCSV", "", "Path to the CSV file containing the tag map.")
 	debugLevel := flag.Bool("debug", false, "Enable debug logging")
 
-	// Set up slog to use a null writer
-	nullHandler := slog.NewTextHandler(&nullWriter{}, nil)
-	logger := slog.New(nullHandler)
-	slog.SetDefault(logger)
-
 	// Parse the flags
 	flag.Parse()
 
+	var logHandler *slog.TextHandler
+	if debugLevel != nil && *debugLevel {
+		// Handle debug logging to a text file
+		logFile, err := os.OpenFile("applog.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			slog.Error("Failed to open log file", "error", err)
+			return
+		}
+		defer logFile.Close()
+		logHandler = slog.NewTextHandler(logFile, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})
+	} else {
+		logHandler = slog.NewTextHandler(&nullWriter{}, nil)
+	}
+	logger := slog.New(logHandler)
+	slog.SetDefault(logger)
+
 	// Initialize the Bubble Tea program with the flags
-	p := tea.NewProgram(initialModel(*dirPath, *host, *processName, *tagMapCSV, *debugLevel))
+	p := tea.NewProgram(initialModel(*dirPath, *host, *processName, *tagMapCSV, *debugLevel), tea.WithAltScreen())
 
 	// Run the Bubble Tea program
 	if _, err := p.Run(); err != nil {

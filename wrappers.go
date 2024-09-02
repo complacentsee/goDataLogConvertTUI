@@ -50,6 +50,7 @@ func loadDirectory(m model) tea.Cmd {
 	var cmds []tea.Cmd
 
 	// Iterate through the files and create a command for each
+	filecount := 0
 	for i, floatfileName := range m.dr.GetFloatFiles() {
 		// Append the command to the list
 		cmds = append(cmds, func(index int, fileName string) tea.Cmd {
@@ -57,7 +58,11 @@ func loadDirectory(m model) tea.Cmd {
 				return DATFileNameMsg{index: index, fileName: fileName}
 			}
 		}(i, floatfileName))
+		filecount++
 	}
+
+	// Initialize the popup.
+	cmds = append(cmds, FileInititalCount(filecount))
 
 	// Return all commands as a batch
 	return tea.Batch(cmds...)
@@ -70,13 +75,16 @@ type DATTagFileHeaderMsg struct {
 }
 
 func LoadDATTagFile(m model, file string) tea.Cmd {
-	return func() tea.Msg {
+	var cmds []tea.Cmd
+	cmds = append(cmds, func() tea.Msg {
 		records, date, err := m.dr.ReadTagFileHeader(file)
 		if err != nil {
 			return nil
 		}
 		return DATTagFileHeaderMsg{fileName: file, recordCound: *records, date: *date}
-	}
+	})
+
+	return tea.Batch(cmds...)
 }
 
 type DATTagRecordMsg struct {
@@ -193,4 +201,25 @@ type UpdateStateToLoadingMsg struct {
 
 func UpdateStateToLoading(fileName string) tea.Cmd {
 	return func() tea.Msg { return UpdateStateToLoadingMsg{fileName: fileName} }
+}
+
+type HistorianInsertMsg struct {
+	fileName string
+	err      string
+	duration time.Duration
+}
+
+func InsertHistorianRecords(m *model, fileName string) tea.Cmd {
+	return func() tea.Msg {
+		start := time.Now()
+		errStr := ""
+		records := m.datFileRecords[fileName].FloatRecords
+		pointCache := m.datFileRecords[fileName].PointCache
+		err := LibFTH.ConvertDatFloatRecordsToPutSnapshots(*records, pointCache)
+		if err != nil {
+			errStr = err.Error()
+		}
+		duration := time.Since(start)
+		return HistorianInsertMsg{fileName: fileName, err: errStr, duration: duration}
+	}
 }
