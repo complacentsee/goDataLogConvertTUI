@@ -150,8 +150,11 @@ func LookupTagsOnHistorian(m model, filename string) tea.Cmd {
 				if exists {
 					continue
 				}
-				count++
 				pointC := LibFTH.AddToPIPointCache(tag.Name, tag.ID, 0, tagName)
+				if !pointC.Process {
+					continue
+				}
+				count++
 				tagRecords.PointCache.AddPoint(pointC)
 			}
 			return LookupTagsOnHistorianMsg{fileName: filename, validTags: count, pointCache: tagRecords.PointCache}

@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/bubbles v0.19.0
 	github.com/charmbracelet/bubbletea v1.1.0
 	github.com/charmbracelet/lipgloss v0.13.0
-	github.com/complacentsee/goDatalogConvert v0.1.5
+	github.com/complacentsee/goDatalogConvert v0.1.6
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6
 	github.com/muesli/reflow v0.3.0

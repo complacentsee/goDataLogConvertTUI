@@ -16,8 +16,8 @@ github.com/charmbracelet/x/exp/golden v0.0.0-20240815200342-61de596daa2b h1:MnAM
 github.com/charmbracelet/x/exp/golden v0.0.0-20240815200342-61de596daa2b/go.mod h1:wDlXFlCrmJ8J+swcL/MnGUuYnqgQdW9rhSD61oNMb6U=
 github.com/charmbracelet/x/term v0.2.0 h1:cNB9Ot9q8I711MyZ7myUR5HFWL/lc3OpU8jZ4hwm0x0=
 github.com/charmbracelet/x/term v0.2.0/go.mod h1:GVxgxAbjUrmpvIINHIQnJJKpMlHiZ4cktEQCN6GWyF0=
-github.com/complacentsee/goDatalogConvert v0.1.5 h1:tBc89Fatze012A8lneMs/KHuHJbVKqgLscm87yqB1GI=
-github.com/complacentsee/goDatalogConvert v0.1.5/go.mod h1:kiGjbxWOCfWrrzayY5WxSAO3jD3J2Kc5uNChiKAFImU=
+github.com/complacentsee/goDatalogConvert v0.1.6 h1:jQxjqS2oQS2FZTue4IpDuYdRX04iVf/ZjdYuRBeNmd0=
+github.com/complacentsee/goDatalogConvert v0.1.6/go.mod h1:kiGjbxWOCfWrrzayY5WxSAO3jD3J2Kc5uNChiKAFImU=
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f h1:Y/CXytFA4m6baUTXGLOoWe4PQhGxaX0KpnayAqC48p4=
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f/go.mod h1:vw97MGsxSvLiUE2X8qFplwetxpGLQrlU1Q9AUEIzCaM=
 github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69Aj6K7nkY=
