@@ -37,9 +37,6 @@ func (m model) ViewMainModel() string {
 	if m.processed && m.processingStatus != nil {
 		s += m.ViewProcessingProgressBar()
 	}
-	if m.footerStatus != "" {
-		s += fmt.Sprintf("Status: %s\n", m.footerStatus)
-	}
 	s += "[q] Quit  [j] Down  [k] Up  [Space/Enter] Toggle Select [a] Select All  [n] Deselect All  [p] Process All"
 	return s
 }

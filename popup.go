@@ -123,9 +123,52 @@ func (m ScanningFilesPopupModel) View(width int, height int, background string) 
 	// Calculate x and y positions with explicit float arithmetic
 	x := int(math.Round(float64(width)/2 - float64(popupWidth)*0.5))
 	y := int(math.Round(float64(height)/2 - 2 - float64(popupHeight)*0.5))
-	slog.Debug("Window popup:", "Pupup dims", fmt.Sprintf("width: %d, height: %d, x:%d, y:%d", width, height, x, y))
+	slog.Debug("Window popup:", "Popup dims", fmt.Sprintf("width: %d, height: %d, x:%d, y:%d", width, height, x, y))
 
 	// Return the overlay placement
+	return helpers.PlaceOverlay(x, y, forground, background, false)
+
+}
+
+type NoValidFilesPopupModel struct {
+	Active bool
+}
+
+func InitialNoValidFilesPopupModel(active bool) NoValidFilesPopupModel {
+	return NoValidFilesPopupModel{Active: active}
+}
+
+func (m NoValidFilesPopupModel) View(width int, height int, directory string, background string) string {
+	if !m.Active {
+		return background
+	}
+
+	popupWidth := 50
+	popupHeight := 12
+
+	// Create the border and content
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), true).
+		Padding(1, 2).
+		BorderForeground(lipgloss.Color("205"))
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Center,
+		fmt.Sprintf("Directory %s contained no valid files.", directory),
+		"Press q to quit.",
+	)
+
+	forground := lipgloss.Place(
+		popupWidth, popupHeight,
+		lipgloss.Center, lipgloss.Center,
+		borderStyle.Render(content),
+		lipgloss.WithWhitespaceChars(" "),
+	)
+
+	x := int(math.Round(float64(width)/2 - float64(popupWidth)*0.5))
+	y := int(math.Round(float64(height)/2 - 2 - float64(popupHeight)*0.5))
+	slog.Debug("Window popup:", "Popup dims", fmt.Sprintf("width: %d, height: %d, x:%d, y:%d", width, height, x, y))
+
 	return helpers.PlaceOverlay(x, y, forground, background, false)
 
 }

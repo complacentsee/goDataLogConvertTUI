@@ -361,11 +361,11 @@ func (m *model) UpdateViewDimentions() {
 		if m.useTagMap {
 			newHeight--
 		}
-		if m.footerStatus != "" {
-			newHeight--
-		}
 		if m.processingStatus != nil {
 			newHeight = newHeight - 2
+		}
+		if m.novfpu.Active {
+			newHeight--
 		}
 		m.filesTable.SetHeight(newHeight)
 	}

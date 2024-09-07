@@ -24,7 +24,6 @@ type model struct {
 	tagMapCSV        string
 	debugLevel       bool
 	dr               *LibDAT.DatReader
-	footerStatus     string
 	datFileRecords   map[string]DATRecordStructure
 	tagMaps          map[string]string
 	useTagMap        bool
@@ -32,15 +31,17 @@ type model struct {
 	firstDatReturned bool
 	recsLoadedCount  int
 	sfmpu            ScanningFilesPopupModel
+	novfpu           NoValidFilesPopupModel
 	processingStatus *processingStatus
 }
 
 func initialModel(dirPath, host, processName, tagMapCSV string, debugLevel bool) model {
-	footerStatus := ""
+
+	noValidFiles := false
 
 	dr, err := LibDAT.NewDatReader(dirPath)
 	if err != nil {
-		footerStatus = fmt.Sprintf("Unable to find valid failes in directory: %s", dirPath)
+		noValidFiles = true
 	}
 
 	// Initialize the table with columns and rows
@@ -76,17 +77,26 @@ func initialModel(dirPath, host, processName, tagMapCSV string, debugLevel bool)
 		debugLevel:     debugLevel,
 		connecting:     true,
 		dr:             dr,
-		footerStatus:   footerStatus,
 		datFileRecords: make(map[string]DATRecordStructure),
 		tagMaps:        make(map[string]string),
 		useTagMap:      false,
 		processed:      false,
 		sfmpu:          initialScanningPopupModel(),
+		novfpu:         InitialNoValidFilesPopupModel(noValidFiles),
 	}
 }
 
 func (m model) Init() tea.Cmd {
 	// Combine multiple commands using tea.Batch
+
+	if m.novfpu.Active {
+		return tea.Batch(
+			SetProcessName(m.processName),
+			PiConnectToServer(m.hostname),
+			LoadCSVMapping(m),
+		)
+	}
+
 	return tea.Batch(
 		SetProcessName(m.processName),
 		PiConnectToServer(m.hostname),
@@ -173,7 +183,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tagMaps = msg.mapping
 			m.useTagMap = true
 		} else {
-			m.footerStatus = msg.err
+			// TODO: POPUP MESSAGE
+			//m.footerStatus = msg.err
 		}
 	case LookupTagsOnHistorianMsg:
 		updateDATFileRecord(&m, msg)
@@ -199,8 +210,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return processNextDatFile(&m, false)
 	case RetriggerHistorianInsertMsg:
 		return m, processNextHistorianInsert(&m)
-	case StatusMsg:
-		m.footerStatus = msg.message
 	case ResetProcessingFlagMsg:
 		m.processed = false
 
@@ -218,6 +227,10 @@ func (m model) View() string {
 	s := ""
 	s += m.ViewMainModel()
 
+	if m.novfpu.Active {
+
+	}
+	s = m.novfpu.View(m.Width, m.Height, m.dirPath, s)
 	if m.sfmpu.Active {
 		s = m.sfmpu.View(m.Width, m.Height, s)
 	}
