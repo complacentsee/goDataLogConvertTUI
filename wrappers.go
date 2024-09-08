@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -136,7 +137,7 @@ func LookupTagsOnHistorian(m model, filename string) tea.Cmd {
 		if tagRecords, exists := m.datFileRecords[filename]; exists {
 			count := 0
 			for _, tag := range tagRecords.TagRecords {
-				tagName := tag.Name
+				tagName := strings.ToUpper(tag.Name)
 				if m.useTagMap {
 					var exists bool
 					tagName, exists = m.tagMaps[tag.Name]
