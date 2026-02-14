@@ -12,6 +12,11 @@ import (
 	"github.com/complacentsee/goDatalogConvert/LibUtil"
 )
 
+// ErrorMsg represents an error that occurred during command execution
+type ErrorMsg struct {
+	err error
+}
+
 type PiServerProcessNameMsg struct {
 	processName string
 }
@@ -70,7 +75,7 @@ func loadDirectory(m model) tea.Cmd {
 
 type DATTagFileHeaderMsg struct {
 	fileName    string
-	recordCound int32
+	recordCount int32
 	date        string
 }
 
@@ -79,9 +84,10 @@ func LoadDATTagFile(m model, file string) tea.Cmd {
 	cmds = append(cmds, func() tea.Msg {
 		records, date, err := m.dr.ReadTagFileHeader(file)
 		if err != nil {
-			return nil
+			slog.Error(fmt.Sprintf("Error reading tag file header for %s: %v", file, err))
+			return ErrorMsg{err: fmt.Errorf("failed to read tag file header for %s: %w", file, err)}
 		}
-		return DATTagFileHeaderMsg{fileName: file, recordCound: *records, date: *date}
+		return DATTagFileHeaderMsg{fileName: file, recordCount: *records, date: *date}
 	})
 
 	return tea.Batch(cmds...)
@@ -96,7 +102,8 @@ func LoadDATTagRecords(m model, file string, count int) tea.Cmd {
 	return func() tea.Msg {
 		records, err := m.dr.ReadTagRecordsFile(file, count)
 		if err != nil {
-			return nil
+			slog.Error(fmt.Sprintf("Error reading tag records for %s: %v", file, err))
+			return ErrorMsg{err: fmt.Errorf("failed to read tag records for %s: %w", file, err)}
 		}
 		return DATTagRecordMsg{fileName: file, records: records}
 	}
@@ -131,47 +138,45 @@ type LookupTagsOnHistorianMsg struct {
 	validTags  int
 }
 
-func LookupTagsOnHistorian(m model, filename string) tea.Cmd {
+func LookupTagsOnHistorian(filename string, tagRecords []*LibDAT.DatTagRecord, pointCache *LibPI.PointLookup, useTagMap bool, tagMaps map[string]string) tea.Cmd {
 	return func() tea.Msg {
-		if tagRecords, exists := m.datFileRecords[filename]; exists {
-			count := 0
-			for _, tag := range tagRecords.TagRecords {
-				tagName := tag.Name
-				if m.useTagMap {
-					var exists bool
-					tagName, exists = m.tagMaps[tag.Name]
-					if !exists {
-						continue
-					}
-				}
-
-				LibDAT.PrintTagRecord(tag)
-				_, exists := tagRecords.PointCache.GetPointByDataLogName(tag.Name)
-				if exists {
+		count := 0
+		for _, tag := range tagRecords {
+			tagName := tag.Name
+			if useTagMap {
+				var exists bool
+				tagName, exists = tagMaps[tag.Name]
+				if !exists {
 					continue
 				}
-				count++
-				pointC := LibFTH.AddToPIPointCache(tag.Name, tag.ID, 0, tagName)
-				tagRecords.PointCache.AddPoint(pointC)
 			}
-			return LookupTagsOnHistorianMsg{fileName: filename, validTags: count, pointCache: tagRecords.PointCache}
+
+			LibDAT.PrintTagRecord(tag)
+			_, exists := pointCache.GetPointByDataLogName(tag.Name)
+			if exists {
+				continue
+			}
+			count++
+			pointC := LibFTH.AddToPIPointCache(tag.Name, tag.ID, 0, tagName)
+			pointCache.AddPoint(pointC)
 		}
-		return nil
+		return LookupTagsOnHistorianMsg{fileName: filename, validTags: count, pointCache: pointCache}
 	}
 }
 
 type DATFloatFileHeaderMsg struct {
 	fileName    string
-	recordCound int32
+	recordCount int32
 }
 
 func LoadDATFloatFile(m model, file string) tea.Cmd {
 	return func() tea.Msg {
 		records, err := m.dr.ReadFloatFileHeader(file)
 		if err != nil {
-			return nil
+			slog.Error(fmt.Sprintf("Error reading float file header for %s: %v", file, err))
+			return ErrorMsg{err: fmt.Errorf("failed to read float file header for %s: %w", file, err)}
 		}
-		return DATFloatFileHeaderMsg{fileName: file, recordCound: *records}
+		return DATFloatFileHeaderMsg{fileName: file, recordCount: *records}
 	}
 }
 
@@ -209,12 +214,10 @@ type HistorianInsertMsg struct {
 	duration time.Duration
 }
 
-func InsertHistorianRecords(m *model, fileName string) tea.Cmd {
+func InsertHistorianRecords(fileName string, records *[]*LibDAT.DatFloatRecord, pointCache *LibPI.PointLookup) tea.Cmd {
 	return func() tea.Msg {
 		start := time.Now()
 		errStr := ""
-		records := m.datFileRecords[fileName].FloatRecords
-		pointCache := m.datFileRecords[fileName].PointCache
 		err := LibFTH.ConvertDatFloatRecordsToPutSnapshots(*records, pointCache)
 		if err != nil {
 			errStr = err.Error()

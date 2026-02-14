@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -12,6 +13,21 @@ import (
 	"github.com/complacentsee/goDatalogConvert/LibPI"
 )
 
+// File state constants
+const (
+	StateTagsLoaded = "Tags Loaded"
+	StateTagsValid  = "Tags Valid"
+	StateRecsLoaded = "Recs loaded"
+	StateLoading    = "Loading"
+	StateCompleted  = "Completed"
+)
+
+// Checkbox state constants
+const (
+	CheckboxUnchecked = "[ ]"
+	CheckboxChecked   = "[X]"
+)
+
 type nullWriter struct{}
 
 func (nw *nullWriter) Write(p []byte) (n int, err error) {
@@ -20,7 +36,7 @@ func (nw *nullWriter) Write(p []byte) (n int, err error) {
 }
 
 func updateWithDATFileNameMsg(m model, msg DATFileNameMsg) (model, tea.Cmd) {
-	m.UpdateViewDimentions()
+	m.UpdateViewDimensions()
 	// validate column width
 	requiredWidth := len(msg.fileName) + 1
 	columns := m.filesTable.Columns()
@@ -31,7 +47,7 @@ func updateWithDATFileNameMsg(m model, msg DATFileNameMsg) (model, tea.Cmd) {
 	}
 
 	// Add new row
-	row := table.Row{"[X]", msg.fileName, "Pending", "", "", "", "", "", ""}
+	row := table.Row{CheckboxChecked, msg.fileName, "Pending", "", "", "", "", "", ""}
 	m.rows = append(m.rows, row)
 	m.filesTable.SetRows(m.rows)
 
@@ -63,15 +79,12 @@ func updateWithDATFileHeaderMsg(m model, msg DATTagFileHeaderMsg) model {
 	if err != nil {
 		return m
 	}
-	updatedRow := table.Row{row[0], row[1], "Tags Loaded", msg.date, fmt.Sprintf("%d", msg.recordCound), row[5], row[6], row[7], row[8]}
+	updatedRow := table.Row{row[0], row[1], StateTagsLoaded, msg.date, fmt.Sprintf("%d", msg.recordCount), row[5], row[6], row[7], row[8]}
 	m, err = updateRow(m, index, updatedRow)
 	if err != nil {
-		fmt.Println("Error updating row:", err)
+		slog.Error("Error updating row", "error", err)
 		return m
 	}
-	// Sort the rows by date after updating
-	m.rows = sortRowsByDate(m.rows)
-	m.filesTable.SetRows(m.rows)
 
 	// update progress bar popup model
 	m.sfmpu.InitalizedFiles++
@@ -151,7 +164,7 @@ func updateDATFileRecord(m *model, msg LookupTagsOnHistorianMsg) error {
 
 	// Update the row
 	updatedRow[5] = fmt.Sprintf("%d", msg.validTags)
-	updatedRow[2] = "Tags Valid"
+	updatedRow[2] = StateTagsValid
 	m.rows[index] = updatedRow
 	m.filesTable.SetRows(m.rows)
 
@@ -169,18 +182,15 @@ func updateWithDATFloatFileHeaderMsg(m model, msg DATFloatFileHeaderMsg) (model,
 	if err != nil {
 		return m, nil
 	}
-	updatedRow := table.Row{row[0], row[1], row[2], row[3], row[4], row[5], fmt.Sprintf("%d", msg.recordCound), row[7], row[8]}
+	updatedRow := table.Row{row[0], row[1], row[2], row[3], row[4], row[5], fmt.Sprintf("%d", msg.recordCount), row[7], row[8]}
 	m, err = updateRow(m, index, updatedRow)
 	if err != nil {
-		fmt.Println("Error updating row:", err)
+		slog.Error("Error updating row", "error", err)
 		return m, nil
 	}
-	// Sort the rows by date after updating
-	m.rows = sortRowsByDate(m.rows)
-	m.filesTable.SetRows(m.rows)
 
 	record := m.datFileRecords[msg.fileName]
-	record.recordCount = int(msg.recordCound)
+	record.recordCount = int(msg.recordCount)
 	m.datFileRecords[msg.fileName] = record
 
 	// update progress bar popup model
@@ -196,9 +206,11 @@ func updateWithDATFloatFileHeaderMsg(m model, msg DATFloatFileHeaderMsg) (model,
 
 func updateWithDATFloatFileRecordsMsg(m model, msg DATTagFloatRecordMsg) model {
 	// update progress bar
-	m.processingStatus.datFilesProcessed++
-	if m.processingStatus.processingCount > 0 {
-		m.processingStatus.datFilesProcessedPBPercent = float64(m.processingStatus.datFilesProcessed) / float64(m.processingStatus.processingCount)
+	if m.processingStatus != nil {
+		m.processingStatus.datFilesProcessed++
+		if m.processingStatus.processingCount > 0 {
+			m.processingStatus.datFilesProcessedPBPercent = float64(m.processingStatus.datFilesProcessed) / float64(m.processingStatus.processingCount)
+		}
 	}
 
 	index, row, err := findRowByFileName(m, msg.fileName)
@@ -210,10 +222,10 @@ func updateWithDATFloatFileRecordsMsg(m model, msg DATTagFloatRecordMsg) model {
 	record.FloatRecords = msg.records
 	m.datFileRecords[msg.fileName] = record
 
-	updatedRow := table.Row{row[0], row[1], "Recs loaded", row[3], row[4], row[5], row[6], fmt.Sprintf("%.2f sec", msg.duration.Seconds()), row[8]}
+	updatedRow := table.Row{row[0], row[1], StateRecsLoaded, row[3], row[4], row[5], row[6], fmt.Sprintf("%.2f sec", msg.duration.Seconds()), row[8]}
 	m, err = updateRow(m, index, updatedRow)
 	if err != nil {
-		fmt.Println("Error updating row:", err)
+		slog.Error("Error updating row", "error", err)
 		return m
 	}
 
@@ -226,10 +238,10 @@ func updateWithUpdateStateToLoadingMsg(m model, msg UpdateStateToLoadingMsg) mod
 		return m
 	}
 
-	updatedRow := table.Row{row[0], row[1], "Loading", row[3], row[4], row[5], row[6], row[7], row[8]}
+	updatedRow := table.Row{row[0], row[1], StateLoading, row[3], row[4], row[5], row[6], row[7], row[8]}
 	m, err = updateRow(m, index, updatedRow)
 	if err != nil {
-		fmt.Println("Error updating row:", err)
+		slog.Error("Error updating row", "error", err)
 		return m
 	}
 
@@ -245,7 +257,7 @@ func processNextDatFile(m *model, first bool) (tea.Model, tea.Cmd) {
 	if first {
 		processCountTotal := 0
 		for i := 0; i < len(m.rows); i++ {
-			if m.rows[i][0] == "[X]" && m.rows[i][2] == "Tags Valid" {
+			if m.rows[i][0] == CheckboxChecked && m.rows[i][2] == StateTagsValid {
 				processCountTotal++
 			}
 		}
@@ -253,7 +265,7 @@ func processNextDatFile(m *model, first bool) (tea.Model, tea.Cmd) {
 	}
 
 	for i := 0; i < len(m.rows); i++ {
-		if m.rows[i][0] == "[X]" && m.rows[i][2] == "Tags Valid" {
+		if m.rows[i][0] == CheckboxChecked && m.rows[i][2] == StateTagsValid {
 			if m.recsLoadedCount < 3 {
 				name := m.rows[i][1]
 				m.rows[i][2] = "Processing"
@@ -280,10 +292,12 @@ func processNextDatFile(m *model, first bool) (tea.Model, tea.Cmd) {
 
 func processNextHistorianInsert(m *model) tea.Cmd {
 	for i := 0; i < len(m.rows); i++ {
-		if m.rows[i][0] == "[X]" && m.rows[i][2] == "Recs loaded" {
+		if m.rows[i][0] == CheckboxChecked && m.rows[i][2] == StateRecsLoaded {
 			name := m.rows[i][1]
 			m.rows[i][2] = "Inserting"
-			return InsertHistorianRecords(m, name)
+			records := m.datFileRecords[name].FloatRecords
+			pointCache := m.datFileRecords[name].PointCache
+			return InsertHistorianRecords(name, records, pointCache)
 		}
 	}
 	// TODO: Add completion logic here.
@@ -292,22 +306,23 @@ func processNextHistorianInsert(m *model) tea.Cmd {
 
 func updateWithHistorianInsertMsg(m model, msg HistorianInsertMsg) model {
 	// update progress bar
-	m.processingStatus.historianInserted++
-	if m.processingStatus.processingCount > 0 {
-		m.processingStatus.historianInsertedProcessedPBPercent = float64(m.processingStatus.historianInserted) / float64(m.processingStatus.processingCount)
+	if m.processingStatus != nil {
+		m.processingStatus.historianInserted++
+		if m.processingStatus.processingCount > 0 {
+			m.processingStatus.historianInsertedProcessedPBPercent = float64(m.processingStatus.historianInserted) / float64(m.processingStatus.processingCount)
+		}
 	}
 
 	index, row, err := findRowByFileName(m, msg.fileName)
 	if err != nil {
-		updatedRow := table.Row{row[0], row[1], "Error Inserting", row[3], row[4], row[5], row[6], row[7], fmt.Sprintf("%.2f sec", msg.duration.Seconds())}
-		m, _ = updateRow(m, index, updatedRow)
+		slog.Error(fmt.Sprintf("Could not find row for file %s during historian insert", msg.fileName))
 		return m
 	}
 
 	delete(m.datFileRecords, msg.fileName)
 	m.recsLoadedCount--
 
-	updatedRow := table.Row{row[0], row[1], "Completed", row[3], row[4], row[5], row[6], row[7], fmt.Sprintf("%.2f sec", msg.duration.Seconds())}
+	updatedRow := table.Row{row[0], row[1], StateCompleted, row[3], row[4], row[5], row[6], row[7], fmt.Sprintf("%.2f sec", msg.duration.Seconds())}
 	m, _ = updateRow(m, index, updatedRow)
 
 	return m
@@ -352,7 +367,7 @@ func ResetProcessingFlag() tea.Cmd {
 	}
 }
 
-func (m *model) UpdateViewDimentions() {
+func (m *model) UpdateViewDimensions() {
 	newHeight := m.Height
 	if newHeight < 1 {
 		m.filesTable.SetHeight(1)
@@ -404,5 +419,5 @@ func (m *model) InitializeProgressBars(totalProcessCount int) {
 		historianInsertedProcessedPBPercent: 0.0,
 	}
 
-	m.UpdateViewDimentions()
+	m.UpdateViewDimensions()
 }

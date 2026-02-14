@@ -40,7 +40,7 @@ func initialModel(dirPath, host, processName, tagMapCSV string, debugLevel bool)
 
 	dr, err := LibDAT.NewDatReader(dirPath)
 	if err != nil {
-		footerStatus = fmt.Sprintf("Unable to find valid failes in directory: %s", dirPath)
+		footerStatus = fmt.Sprintf("Unable to find valid files in directory: %s", dirPath)
 	}
 
 	// Initialize the table with columns and rows
@@ -52,8 +52,8 @@ func initialModel(dirPath, host, processName, tagMapCSV string, debugLevel bool)
 		{Title: "Dat Tags", Width: 8},
 		{Title: "Hist Tags", Width: 9},
 		{Title: "Records", Width: 7},
-		{Title: "Duration", Width: 8},
-		{Title: "Duration", Width: 8},
+		{Title: "Load Time", Width: 8},
+		{Title: "Insert Time", Width: 8},
 	}
 
 	rows := []table.Row{}
@@ -117,21 +117,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			selectedRow := m.filesTable.Cursor()
 			if selectedRow >= 0 && selectedRow < len(m.rows) {
-				if m.rows[selectedRow][0] == "[ ]" {
-					m.rows[selectedRow][0] = "[X]"
+				if m.rows[selectedRow][0] == CheckboxUnchecked {
+					m.rows[selectedRow][0] = CheckboxChecked
 				} else {
-					m.rows[selectedRow][0] = "[ ]"
+					m.rows[selectedRow][0] = CheckboxUnchecked
 				}
 			}
 			m.filesTable.SetRows(m.rows)
 		case "a":
 			for i := 0; i < len(m.rows); i++ {
-				m.rows[i][0] = "[X]"
+				m.rows[i][0] = CheckboxChecked
 			}
 			m.filesTable.SetRows(m.rows)
 		case "n":
 			for i := 0; i < len(m.rows); i++ {
-				m.rows[i][0] = "[ ]"
+				m.rows[i][0] = CheckboxUnchecked
 			}
 			m.filesTable.SetRows(m.rows)
 		case "p": // Process selected file
@@ -144,7 +144,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
-		m.UpdateViewDimentions()
+		m.UpdateViewDimensions()
 
 	case tea.MouseMsg:
 		// Handle mouse scroll
@@ -154,6 +154,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filesTable.MoveDown(1)
 		}
 
+	case ErrorMsg:
+		m.footerStatus = fmt.Sprintf("Error: %v", msg.err)
+		slog.Error("Command error", "error", msg.err)
 	case PiServerProcessNameMsg:
 		m.processName = msg.processName
 	case PiServerConnectMsg:
@@ -164,10 +167,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return updateWithDATFileNameMsg(m, msg)
 	case DATTagFileHeaderMsg:
 		m = updateWithDATFileHeaderMsg(m, msg)
-		return m, tea.Batch(LoadDATTagRecords(m, msg.fileName, int(msg.recordCound)))
+		return m, tea.Batch(LoadDATTagRecords(m, msg.fileName, int(msg.recordCount)))
 	case DATTagRecordMsg:
 		m = upsertDatTagFileRecord(m, msg.fileName, msg.records)
-		return m, LookupTagsOnHistorian(m, msg.fileName)
+		tagRecords := m.datFileRecords[msg.fileName]
+		return m, LookupTagsOnHistorian(msg.fileName, tagRecords.TagRecords, tagRecords.PointCache, m.useTagMap, m.tagMaps)
 	case CSVMapping:
 		if msg.err == "" {
 			m.tagMaps = msg.mapping
